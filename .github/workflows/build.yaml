@@ -84,7 +84,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-contexts: |
-            src=https://github.com/${{ env.UPSTREAM_REPO }}.git
+            src=https://github.com/${{ env.UPSTREAM_REPO }}.git#${{ steps.check-upstream.outputs.latest_commit }}
           build-args: |
             UPSTREAM_COMMIT=${{ steps.check-upstream.outputs.latest_commit }}
 
