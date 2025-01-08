@@ -1,0 +1,99 @@
+name: Watch Upstream and Build Docker Image
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Runs every 15 minutes
+  workflow_dispatch:  # Manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  UPSTREAM_REPO: "tdlib/telegram-bot-api"
+  UPSTREAM_BRANCH: "master"
+
+jobs:
+  check_and_build:
+    name: Check Updates and Push Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get stored commit
+        id: get-commit
+        run: |
+          if [ -f .last-commit ]; then
+            echo "stored_commit=$(cat .last-commit)" >> $GITHUB_OUTPUT
+          else
+            echo "stored_commit=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check upstream repository
+        id: check-upstream
+        run: |
+          LATEST_COMMIT=$(curl -sS "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits/${{ env.UPSTREAM_BRANCH }}" | jq -r '.sha')
+          echo "latest_commit=$LATEST_COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+            max-parallelism = 4
+
+      - name: Login to GHCR
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retrieve author data
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        run: |
+          echo AUTHOR=$(curl -sSL ${{ github.event.repository.owner.url }} | jq -r '.name') >> $GITHUB_ENV
+
+      - name: Extract metadata
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.authors=${{ env.AUTHOR }}
+
+      - name: Build container image
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-contexts: |
+            src=https://github.com/${{ env.UPSTREAM_REPO }}.git
+          build-args: |
+            UPSTREAM_COMMIT=${{ steps.check-upstream.outputs.latest_commit }}
+
+      - name: Update last processed commit
+        if: steps.get-commit.outputs.stored_commit != steps.check-upstream.outputs.latest_commit
+        run: |
+          echo "${{ steps.check-upstream.outputs.latest_commit }}" > .last-commit
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add .last-commit
+          git commit -m "Update last processed commit"
+          git push
