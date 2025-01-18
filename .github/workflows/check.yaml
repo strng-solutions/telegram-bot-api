@@ -1,0 +1,44 @@
+name: Check Upstream
+on:
+  schedule:
+    - cron: '0 */8 * * *'  # Runs every 8 hours
+  workflow_dispatch:  # Manual trigger
+
+env:
+  UPSTREAM_REPO: "tdlib/telegram-bot-api"
+  UPSTREAM_BRANCH: "master"
+
+jobs:
+  check:
+    name: Check Upstream Updates
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get stored commit
+        id: get-stored-commit
+        run: |
+          if [ -f .upstream ]; then
+            echo "sha=$(cat .last-commit)" >> $GITHUB_OUTPUT
+          else
+            echo "sha=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check upstream repository
+        id: get-upstream-commit
+        run: |
+          sha=$(curl -sS "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits/${{ env.UPSTREAM_BRANCH }}" | jq -r '.sha')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Update upstream commit hash
+        if: steps.get-stored-commit.outputs.sha != steps.get-upstream-commit.outputs.sha
+        run: |
+          echo "${{ steps.get-upstream-commit.outputs.sha }}" > .upstream
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add .last-commit
+          git commit -m "Update upstream commit sha"
+          git push
