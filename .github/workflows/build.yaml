@@ -24,7 +24,7 @@ jobs:
         id: get-stored-commit
         run: |
           if [ -f .upstream ]; then
-            echo "sha=$(cat .last-commit)" >> $GITHUB_OUTPUT
+            echo "sha=$(cat .upstream)" >> $GITHUB_OUTPUT
           else
             echo "sha=none" >> $GITHUB_OUTPUT
           fi

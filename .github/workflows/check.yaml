@@ -22,7 +22,7 @@ jobs:
         id: get-stored-commit
         run: |
           if [ -f .upstream ]; then
-            echo "sha=$(cat .last-commit)" >> $GITHUB_OUTPUT
+            echo "sha=$(cat .upstream)" >> $GITHUB_OUTPUT
           else
             echo "sha=none" >> $GITHUB_OUTPUT
           fi
@@ -39,6 +39,6 @@ jobs:
           echo "${{ steps.get-upstream-commit.outputs.sha }}" > .upstream
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          git add .last-commit
+          git add .upstream
           git commit -m "Update upstream commit sha"
           git push
